@@ -256,11 +256,11 @@ def create_fmr_topup(bv, func_dict, data_folder, target_folder, appa, skip_volum
     and which run to use as PA - pa_run"""
 
     # set parameters to load mosaic fmr file
-    if   appa == 'AP': first_file     = '{}/{}'.format(data_folder, func_dict['KeysAP'][0])
-    elif appa == 'PA': first_file     = '{}/{}'.format(data_folder, func_dict['KeysRunMag'][pa_run-1])
+    if   appa == 'AP': first_file     = '{}/{}'.format(data_folder, func_dict['KeysRunMag'][pa_run-1])
+    elif appa == 'PA': first_file     = '{}/{}'.format(data_folder, func_dict['KeysPA'][0])
 
     # if number of volumes is AP, count number of AP volumes and use that for both PA an AP, else take the given number
-    if nr_vols == 'AP':
+    if nr_vols == 'PA':
         n_volumes      = func_dict[func_dict['KeysAP'][0]]['NrVolumes_Scanned'] - skip_volumes_end
     else:
         n_volumes      = nr_vols
