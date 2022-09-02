@@ -119,7 +119,7 @@ def functional_dir_information(input_dir, functional_marker='MOSAIC', save_vol_n
                                           (functional_dict[r]['ImageMapping'] == 'Phase')]
     tempdict['KeysRunReff'] = [r for r in functional_dict.keys() if (functional_dict[r]['Run'] >0) and 
                                           (functional_dict[r]['_isReff'])]
-    tempdict['KeysAP'] = [r for r in functional_dict.keys() if (functional_dict[r]['_isPA']) and
+    tempdict['KeysPA'] = [r for r in functional_dict.keys() if (functional_dict[r]['_isPA']) and
                                           (functional_dict[r]['ImageMapping'] == 'Magnitude') and
                                           (functional_dict[r]['_isReff'] == False)]
                                           
