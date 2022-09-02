@@ -261,7 +261,7 @@ def create_fmr_topup(bv, func_dict, data_folder, target_folder, appa, skip_volum
 
     # if number of volumes is AP, count number of AP volumes and use that for both PA an AP, else take the given number
     if nr_vols == 'PA':
-        n_volumes      = func_dict[func_dict['KeysAP'][0]]['NrVolumes_Scanned'] - skip_volumes_end
+        n_volumes      = func_dict[func_dict['KeysPA'][0]]['NrVolumes_Scanned'] - skip_volumes_end
     else:
         n_volumes      = nr_vols
         
