@@ -20,3 +20,5 @@ A Demo notebook of one possible preprocessing pipeline is provided to give intui
 Some optional functions are not loaded directly to enhance system compatibility (most noticable bv_preproc.anatomical_nighres) - These modules should be loaded using e.g. `import bv_preproc.anatomical_nighres`.
 
 ---
+
+TODO: Finish implementation of NORDIC (using scrips by Mahdi Enan)
