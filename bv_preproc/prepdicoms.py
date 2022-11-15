@@ -76,8 +76,8 @@ def functional_dir_information(input_dir, functional_marker='MOSAIC', save_vol_n
             # get information from header data and save
             functional_dict[file]['ImageMapping'] = curhead.ImageType[2].replace('P', 'Phase').replace('M', 'Magnitude')# phase or frequency
             # set run number
-            if re.search(r'(?<=run)[0-9]+',curhead.SeriesDescription):
-                functional_dict[file]['Run'] = int(re.search(r'(?<=run)[0-9]+',curhead.SeriesDescription)[0])
+            if re.search(r'(?i)(?<=run)[-_]?[0-9]+',curhead.SeriesDescription):
+                functional_dict[file]['Run'] = int(re.sub(r'[^0-9]', '' ,re.search(r'(?i)(?<=run)[-_]?[0-9]+',curhead.SeriesDescription)[0]))
             else:
                 functional_dict[file]['Run'] = np.nan
             functional_dict[file]['Rows'] = curhead.Rows
