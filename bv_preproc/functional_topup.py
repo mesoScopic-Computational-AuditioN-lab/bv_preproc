@@ -9,6 +9,7 @@ import itertools
 import re
 import pickle
 import pandas as pd
+import shutil
 from pydicom import dcmread
 from os.path import join
 
@@ -26,15 +27,19 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 
 def topup_prepair_all(input_dir, output_dir, pps, sess,
                   pa_run = 1,    # what run to use for pa (first x runs)
-                  nr_vols = 'AP', # nr of volumes to use for ap/pa, if AP count measured ap and use this, else give int
+                  nr_vols = 'PA', # nr of volumes to use for ap/pa, if AP count measured ap and use this, else give int
+                  skip_volumes_end = 0, # how many volumes to skip at end
                   sbref=True,    # include sbref to list to convert
                   slicor=True,   # include slice scan correction naming for convertion
                   motcor=True,   # include motion correction naming for convertion
                   hpfil=True,    # include highpass filter naming for convertion
                   tpsmo=True,    # include temporal smoothing naming conv
                   motcor_appa = True,   # include motion correction for appa file
+                  motcor_ses = False,   # refference session, default false: same as ses
+                  prep_appa = True,     # prepair appa files
                   dimension_appa = 't', # appa dimension parameter for merge
                   cmdprefix='',         # cmd extra prefix (e.g. for wsl add 'wsl -e ')
+                  pa_marker=r'(?i)_PA', # regex marker for pa files (what to look for in dicom discription
                   print_cmd=False,      # instead of running cmd, print comment for copy paste
                   bv=None): 
     """Prepair bv files to be used for topup, including obtaining dicom information,
@@ -45,9 +50,9 @@ def topup_prepair_all(input_dir, output_dir, pps, sess,
            parameters"""
     for pp, ses in itertools.product(pps, sess):
         topup_prepair(input_dir, output_dir, pp, ses,
-                      pa_run=pa_run, nr_vols=nr_vols, sbref=sbref, slicor=slicor, 
-                      motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, motcor_appa=motcor_appa, 
-                      dimension_appa=dimension_appa, cmdprefix=cmdprefix, print_cmd=print_cmd, bv=bv)
+                      pa_run=pa_run, nr_vols=nr_vols, skip_volumes_end=skip_volumes_end, sbref=sbref, slicor=slicor, 
+                      motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, motcor_appa=motcor_appa, motcor_ses=motcor_ses, 
+                      dimension_appa=dimension_appa, cmdprefix=cmdprefix, pa_marker=pa_marker, print_cmd=print_cmd, bv=bv)
     return
 
 def topup_run_all(input_dir, pps, sess,
@@ -96,7 +101,8 @@ def topup_tobv_all(input_dir, pps, sess, suffix='', sbref=True, # include sbref 
 
 def topup_prepair(input_dir, output_dir, pp, ses,
                   pa_run = 1,    # what run to use for pa (first x runs)
-                  nr_vols = 'AP', # nr of volumes to use for ap/pa, if AP count measured ap and use this, else give int
+                  nr_vols = 'PA', # nr of volumes to use for ap/pa, if AP count measured ap and use this, else give int
+                  skip_volumes_end = 0, # how many volumes to skip at end
                   sbref=True,    # include sbref to list to convert
                   slicor=True,   # include slice scan correction naming for convertion
                   motcor=True,   # include motion correction naming for convertion
@@ -104,8 +110,10 @@ def topup_prepair(input_dir, output_dir, pp, ses,
                   tpsmo=True,    # include temporal smoothing naming conv
                   motcor_appa = True,   # include motion correction for appa file
                   motcor_ses = False,   # refference session, default false: same as ses
+                  prep_appa = True,     # prepair appa files
                   dimension_appa = 't', # appa dimension parameter for merge
                   cmdprefix='',         # cmd extra prefix (e.g. for wsl add 'wsl -e ')
+                  pa_marker=r'(?i)_PA', # regex marker for pa files (what to look for in dicom discription
                   print_cmd=False,      # instead of running cmd, print comment for copy paste
                   bv=None): 
     """Prepair bv files to be used for topup, including obtaining dicom information,
@@ -116,26 +124,30 @@ def topup_prepair(input_dir, output_dir, pp, ses,
            parameters"""
     
     # obtain functional dictionary
-    func_dict = functional_dir_information(join(input_dir, prefix(pp, ses)), bv=bv)
+    func_dict = functional_dir_information(join(input_dir, prefix(pp, ses)), pa_marker=pa_marker, bv=bv)
     
-    # load and preprocesses pa / ap
-    doc_fmr = create_fmr_topup(bv, func_dict, 
-                               join(input_dir, prefix(pp, ses)),
-                               join(output_dir, prefix(pp, ses)), 'AP', nr_vols=nr_vols, pa_run=pa_run)
-    doc_fmr_ap = preproc_topup(bv, doc_fmr, output_dir, pp, ses, motcor_ses=motcor_ses)
-    doc_fmr = create_fmr_topup(bv, func_dict, 
-                               join(input_dir, prefix(pp, ses)), 
-                               join(output_dir, prefix(pp, ses)), 'PA', nr_vols=nr_vols, pa_run=pa_run)
-    doc_fmr_pa = preproc_topup(bv, doc_fmr, output_dir, pp, ses, motcor_ses=motcor_ses)
+    if prep_appa:
+        # load and preprocesses pa / ap
+        doc_fmr = create_fmr_topup(bv, func_dict, 
+                                   join(input_dir, prefix(pp, ses)),
+                                   join(output_dir, prefix(pp, ses)), 'AP', nr_vols=nr_vols, 
+                                   skip_volumes_end=skip_volumes_end, pa_run=pa_run)
+        doc_fmr_ap = preproc_topup(bv, doc_fmr, output_dir, pp, ses, motcor_ses=motcor_ses)
+        doc_fmr = create_fmr_topup(bv, func_dict, 
+                                   join(input_dir, prefix(pp, ses)), 
+                                   join(output_dir, prefix(pp, ses)), 'PA', nr_vols=nr_vols, 
+                                   skip_volumes_end=skip_volumes_end, pa_run=pa_run)
+        doc_fmr_pa = preproc_topup(bv, doc_fmr, output_dir, pp, ses, motcor_ses=motcor_ses)
     
+        # convert bv files to nifti
+        topup_convert_to_nifti_appa(join(output_dir, prefix(pp,ses)), motcor=motcor_appa, bv=bv)
+        # merge pa/ap together
+        _, outfile = topup_merge_appa(join(output_dir, prefix(pp,ses)), motcor=motcor_appa, 
+                                      dimension=dimension_appa, cmdprefix=cmdprefix, print_cmd=print_cmd, bv=bv)
+
     # convert bv files to nifti
-    topup_convert_to_nifti_appa(join(output_dir, prefix(pp,ses)), motcor=motcor_appa, bv=bv)
     topup_convert_to_nifti_runs(join(output_dir, prefix(pp,ses)), sbref=sbref, slicor=slicor, 
                                 motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, bv=bv) 
-    
-    # merge pa/ap together
-    _, outfile = topup_merge_appa(join(output_dir, prefix(pp,ses)), motcor=motcor_appa, 
-                                  dimension=dimension_appa, cmdprefix=cmdprefix, print_cmd=print_cmd, bv=bv)
     return
 
 
@@ -155,6 +167,8 @@ def topup_merge_appa(input_dir, motcor=True, dimension='t', output_type='NIFTI_G
     ap_fil = [s for s in dir_items if re.search(ap_pattern, s)][0]
     pa_fil = [s for s in dir_items if re.search(pa_pattern, s)][0]
 
+    print(f'ap_file: {ap_fil}, pa_fil: {pa_fil}')
+    
     # create cmd command
     mergecmd = _topup_merge_cmd(join(input_dir, ap_fil), 
                                 join(input_dir, pa_fil), 
@@ -249,7 +263,7 @@ def _topup_apply_cmd(nii_path, acqpar, topup_results, outname, inindex=1, method
 
 ## CREATE & PREPROCESS FUNCTIONS
 
-def create_fmr_topup(bv, func_dict, data_folder, target_folder, appa, skip_volumes_start=0, skip_volumes_end=0, nr_vols='AP', pa_run=1):
+def create_fmr_topup(bv, func_dict, data_folder, target_folder, appa, skip_volumes_start=0, skip_volumes_end=0, nr_vols='PA', pa_run=1):
     """allias function for brainvoyager mosiaic fmr creation function - for topup use (5 volumes)
     input functional dict, data folder, target folder, the number of volumes to skip (from start) - skip_volumes_start, 
     the number of volumes to skip in the end - skip_volumes_end, how many volumes to take (if nr_vols == 'AP' we use the AP vol count),
@@ -265,13 +279,13 @@ def create_fmr_topup(bv, func_dict, data_folder, target_folder, appa, skip_volum
     else:
         n_volumes      = nr_vols
         
-    n_slices       = func_dict[func_dict['KeysAP'][0]]['NrSlices']
-    fmr_stc_filename = '{}_TOPUP_{}'.format(func_dict[func_dict['KeysAP'][0]]['PatientName'], appa)
-    big_endian     = func_dict[func_dict['KeysAP'][0]]['_isBigIndian']
-    mosaic_rows    = func_dict[func_dict['KeysAP'][0]]['Rows']
-    mosaic_cols    = func_dict[func_dict['KeysAP'][0]]['Columns']
-    slice_rows     = func_dict[func_dict['KeysAP'][0]]['SliceRows']
-    slice_cols     = func_dict[func_dict['KeysAP'][0]]['SliceColumns']
+    n_slices       = func_dict[func_dict['KeysPA'][0]]['NrSlices']
+    fmr_stc_filename = '{}_TOPUP_{}'.format(func_dict[func_dict['KeysPA'][0]]['PatientName'], appa)
+    big_endian     = func_dict[func_dict['KeysPA'][0]]['_isBigIndian']
+    mosaic_rows    = func_dict[func_dict['KeysPA'][0]]['Rows']
+    mosaic_cols    = func_dict[func_dict['KeysPA'][0]]['Columns']
+    slice_rows     = func_dict[func_dict['KeysPA'][0]]['SliceRows']
+    slice_cols     = func_dict[func_dict['KeysPA'][0]]['SliceColumns']
     bytes_per_pixel = 2
     
     # create actual file - ap & pa
@@ -393,6 +407,29 @@ def nifti_to_fmr(nii_path, use_header_file, suffix='', bv=None):
     bvbabel.stc.write_stc(savepath('stc'), niidata, data_type=fmr_head["DataType"])
     # write the associated fmr file
     _adjust_fmr_prefix(use_header_file, savepath('fmr'))
+    return
+
+def topup_copy_fieldcoefs(input_dir, fromses, toses, pps, fieldcoeffn='topup_results_fieldcoef.nii.gz', bv=None):
+    """high level function to copy multiple fieldcoef files from one session to another, loop over list of participants.
+    input: input_dir(parrent directory), fromses (session to copy from), toses (session to copy to),
+    pps (list of participants to loopp over), 
+    optional input: fieldcoeffn (name of topup fieldcoef filename)"""
+    for pp in pps:
+        topup_copy_fieldcoef(input_dir, fromses, toses, pp, fieldcoeffn=fieldcoeffn, bv=bv)
+    return
+
+def topup_copy_fieldcoef(input_dir, fromses, toses, pp, topp=None, fieldcoeffn='topup_results_fieldcoef.nii.gz', bv=None):
+    """copy fielcoef map from one session (and possible participant) to another
+    use with caution, fieldmaps can overwrite once pressent in other folders
+    input: input_dir(parrent directory), fromses (session to copy from), toses (session to copy to),
+    pp (participant in prefix), 
+    optional input: topp (to participant, default None), fieldcoeffn (name of topup fieldcoef filename)"""
+    # assume same participant if not specified
+    if not topp: topp = pp
+    print_f("\nCopying {} from .../{} to .../{}".format(fieldcoeffn, prefix(pp, fromses), prefix(topp, toses)), bv=bv)
+    # copy file from a to b
+    shutil.copy2(join(input_dir, prefix(pp, fromses), fieldcoeffn), 
+                 join(input_dir, prefix(topp, toses), fieldcoeffn))
     return
 
 ## HELPER FUNCTIONS
