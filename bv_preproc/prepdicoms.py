@@ -41,7 +41,7 @@ def prep_outputs(output_dir, pps, sess, bv=None):
     for pp, ses in itertools.product(pps, sess): 
         target_folder = target_dir(output_dir, prefix(pp,ses), bv) # find target path and create if needed
 
-def functional_dir_information(input_dir, functional_marker='MOSAIC', save_vol_naming=False, bv=None):
+def functional_dir_information(input_dir, functional_marker='MOSAIC', pa_marker=r'(?i)_PA', save_vol_naming=False, bv=None):
     """scan files within sellected directory and abstract usefull information
     store files of interest together with important header information in dictonary and returns
     input: dir =     directory of interest (folder where all (brainvoyager namechanged) dicoms are located
@@ -76,8 +76,8 @@ def functional_dir_information(input_dir, functional_marker='MOSAIC', save_vol_n
             # get information from header data and save
             functional_dict[file]['ImageMapping'] = curhead.ImageType[2].replace('P', 'Phase').replace('M', 'Magnitude')# phase or frequency
             # set run number
-            if re.search(r'(?i)(?<=run)[-_]?[0-9]+',curhead.SeriesDescription):
-                functional_dict[file]['Run'] = int(re.sub(r'[^0-9]', '' ,re.search(r'(?i)(?<=run)[-_]?[0-9]+',curhead.SeriesDescription)[0]))
+            if re.search(r'(?i)(?<=run)[-_:=]?[0-9]+',curhead.SeriesDescription):
+                functional_dict[file]['Run'] = int(re.sub(r'[^0-9]', '' ,re.search(r'(?i)(?<=run)[-_:=]?[0-9]+',curhead.SeriesDescription)[0]))
             else:
                 functional_dict[file]['Run'] = np.nan
             functional_dict[file]['Rows'] = curhead.Rows
@@ -94,8 +94,8 @@ def functional_dir_information(input_dir, functional_marker='MOSAIC', save_vol_n
 
             # other information
             functional_dict[file]['_description'] = curhead.SeriesDescription
-            functional_dict[file]['_isPA'] = bool(re.search(r'_PA',curhead.SeriesDescription))
-            functional_dict[file]['_isReff'] = bool(re.search(r'SBRef$',curhead.SeriesDescription)) # is file a refference image
+            functional_dict[file]['_isPA'] = bool(re.search(pa_marker,curhead.SeriesDescription))
+            functional_dict[file]['_isReff'] = bool(re.search(r'(?i)SBRef$',curhead.SeriesDescription)) # is file a refference image
             functional_dict[file]['_isBigIndian'] = not curhead.is_little_endian
             functional_dict[file]['_volumes'] = sorted([int(re.search(r'(?<={})(?=.*.dcm)[0-9]+'.format(findrun), 
                                                                       v)[0]) for v in os.listdir(input_dir) if 
@@ -177,10 +177,10 @@ def anatomical_dir_information(input_dir, anatomical_marker='3D', save_vol_namin
 
             # other information
             anatomical_dict[file]['_description'] = curhead.SeriesDescription
-            anatomical_dict[file]['_isINV1'] = bool(re.search(r'(?=.*mp2rage)[\w.]+INV1', curhead.SeriesDescription))
-            anatomical_dict[file]['_isINV2'] = bool(re.search(r'(?=.*mp2rage)[\w.]+INV2', curhead.SeriesDescription))
-            anatomical_dict[file]['_isUNI'] = bool(re.search(r'(?=.*mp2rage)[\w.]+UNI', curhead.SeriesDescription))
-            anatomical_dict[file]['_isT1'] = bool(re.search(r'(?=.*mp2rage)[\w.]+T1', curhead.SeriesDescription))
+            anatomical_dict[file]['_isINV1'] = bool(re.search(r'(?i)(?=.*mp2rage)[\w.]+INV1', curhead.SeriesDescription))
+            anatomical_dict[file]['_isINV2'] = bool(re.search(r'(?i)(?=.*mp2rage)[\w.]+INV2', curhead.SeriesDescription))
+            anatomical_dict[file]['_isUNI'] = bool(re.search(r'(?i)(?=.*mp2rage)[\w.]+UNI', curhead.SeriesDescription))
+            anatomical_dict[file]['_isT1'] = bool(re.search(r'(?i)(?=.*mp2rage)[\w.]+T1', curhead.SeriesDescription))
             anatomical_dict[file]['_isAngulated'] = bool(re.search(r'angulated', curhead.SeriesDescription))
             anatomical_dict[file]['_isBigIndian'] = not curhead.is_little_endian
             anatomical_dict[file]['_volumes'] = sorted([int(re.search(r'(?<={})(?=.*.dcm)[0-9]+'.format(findrun), 
