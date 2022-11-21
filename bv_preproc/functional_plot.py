@@ -63,16 +63,66 @@ def read_motcor_log(filename, bv=None):
     # return coords array
     return(coords)
 
+def read_motcor_fails(filename, bv=None):
+    """read a logfile, parse it and get out number of itterations and temporal structure"""
+    # update user
+    print_f('\nParsing motor correction logfiles - for fails - available within: {}'.format(filename), bv=bv)
+    
+    # open current document
+    with open(filename, 'r') as f:
+       # Read the file contents and generate a list with each line
+       lines = f.readlines()  
 
-def plot_motcor_graphs(input_dir, plot_sbref=True, bv=None):
+    # set search patterns for parsing
+    corpattern = lambda p : r'(?<={}: )[-0-9.]+'.format(p)
+    nr_vols = int(re.search(r'(?<=volume:)[ \t]+[0-9]+', lines[-1])[0])
+
+    # predefine matrix
+    coords = np.empty((nr_vols, 6))
+    coords[:] = np.nan
+    n_itss = np.empty((nr_vols, 1))
+    n_itss[:] = np.nan
+
+    for line in lines:
+
+        # match regex
+        match = re.search(r'->', line)
+        if match:
+            # get back saved coordinate shifts
+            dx = float(re.search(corpattern('dx'), line)[0])
+            dy = float(re.search(corpattern('dy'), line)[0])
+            dz = float(re.search(corpattern('dz'), line)[0])
+            rx = float(re.search(corpattern('rx'), line)[0])
+            ry = float(re.search(corpattern('ry'), line)[0])
+            rz = float(re.search(corpattern('rz'), line)[0])
+
+            # get back number of itterations
+            n_its = float(re.search(r'(?<=n_its: )[ \t]+[-0-9.]+', line)[0])
+
+            # save coordinate dictionary
+            coords[int(re.search(r'(?<=volume:)[ \t]+[0-9]+', line)[0])-1,
+                   :] = [dx, dy, dz, rx, ry, rz]
+            n_itss[int(re.search(r'(?<=volume:)[ \t]+[0-9]+', line)[0])-1,
+                   :] = [n_its]
+
+    # calculate differences
+    diffs = np.diff(coords, axis=0)
+    
+    # return coords array
+    return(diffs, n_itss)
+
+def plot_motcor_graphs(input_dir, plot_sbref=True, plot_fails=False, fail_movdif=0.8, fail_itter=90, bv=None):
     """plot motion correction graphs for a given directory
     input: directory where `3DMC.log` files are located,
-    optional input: plot_sbref=True, plot sbref motion correction allongside the graphs, 
+    optional input: plot_sbref=True, plot sbref motion correction allongside the graphs,
+                    plot_fails=False, plot the places with high temporal differences(red), or many itterations(orange),
+                        fail_movdif and fail_itter are bound to plot_fails, and are a cutoff point for differences between
+                        volume, and maximum itterations taken
                     please set to false if no sbref is present
     returns figure and ax, plot"""
     # search trough directory for log files
     dir_items = os.listdir(input_dir)
-    dir_match = sorted([s for s in dir_items if re.search(r'[0-9]_FMR_(?=.*3DMC)[a-zA-Z0-9_]+.log$', s)]) # regex for run log files
+    dir_match = _sort_human([s for s in dir_items if re.search(r'[0-9]_FMR_(?=.*3DMC)[a-zA-Z0-9_]+.log$', s)]) # regex for run log files
     sbref_match = [[s for s in dir_items if re.search(r'SBRef_FMR_3DMC.log$', s)][0]]  # regex search for sbref log file
     if not sbref_match: sbref_match = [' ']     # to circumvent length error add empy if non existing
     all_match = sbref_match + dir_match         # combine match lists (first sbref, then runs)
@@ -115,6 +165,7 @@ def plot_motcor_graphs(input_dir, plot_sbref=True, bv=None):
             coords = read_motcor_log(join(input_dir, all_match[currun]), bv=bv)                     # read log file and get coords
             ax[subidx].set_title('Run {}'.format(currun), fontsize=18)              # set run as title
             ax[subidx].set_xlabel('Volume', fontsize=16)                            # label x axis
+            if plot_fails: diffs, its = read_motcor_fails(join(input_dir, all_match[currun]), bv=bv)                     # read log file and get coords
 
         # genral plotting settings
         ax[subidx].plot(coords, lw=2.5)                                             # plot actual coords
@@ -122,6 +173,27 @@ def plot_motcor_graphs(input_dir, plot_sbref=True, bv=None):
             ax[subidx].axhline(y=axx, color='grey', linestyle='--', lw=2)           # set lines for every whole number
         ax[subidx].tick_params(axis='x', which='major', labelsize=16)               # set ticksizes x 
         ax[subidx].tick_params(axis='y', which='major', labelsize=16)               # and y
+
+        # if plot fails then show areas of interest
+        if plot_fails and currun > 0:
+            diffs = np.abs(diffs)                                                   # take absolute value
+            diffs = np.max(diffs, axis=1)                                           # take maximum off all direction
+            diffs = np.pad(diffs, (0,1))                                            # pad in order to have no wraparound
+            h_diffs = np.zeros(len(diffs))                                          # set new boolean like array
+            h_diffs[diffs > fail_movdif] = 1                                        # if value > 0.8 
+            # loop over some padding to make it more visable
+            for i in [-3, -2, -1, 1, 2, 3]:
+                h_diffs += np.roll(np.pad(h_diffs, (0,3)), i)[:-3]
+            # get boolean array for itterations
+            its_bool = its.transpose() > fail_itter
+
+            # plot fill between errors
+            ax[subidx].fill_between(np.arange(0, len(diffs)), 0, 1, where=h_diffs, alpha=0.2, transform=ax[subidx].get_xaxis_transform(), color='red')
+            ax[subidx].fill_between(np.arange(0, len(diffs)), 0, 1, where=its_bool[0], alpha=0.3, transform=ax[subidx].get_xaxis_transform(), color='orange')
+
+            # warn about potential hickups
+            if h_diffs.any(): print('WARNING: run {} has one or more movement steps larger then {}'.format(currun, fail_movdif))
+            if its_bool.any(): print('WARNING: run {} exceeded {} itterations'.format(currun, fail_itter))
 
     # put legend in last subplot
     ax[-1].legend(['dx', 'dy', 'dz', 'rx', 'ry', 'rz'], fontsize=14, fancybox=True, shadow=True, bbox_to_anchor=(1, 1))
@@ -153,10 +225,10 @@ def plot_preproc_ref(input_dir, plot_sbref=True,
     # search trough directory for preprocessed files
     re_pattern = _regex_preproc_filenames(sbref=2, slicor=slicor, motcor=motcor, hpfil=hpfil, tpsmo=tpsmo)
     dir_items = os.listdir(input_dir)
-    dir_match = sorted([s for s in dir_items if re.search(re_pattern, s)])
+    dir_match = _sort_human([s for s in dir_items if re.search(re_pattern, s)])
     
     # search trough directory for unproccessed files
-    ref_match = sorted([s for s in dir_items if re.search('run{}_FMR.fmr'.format(refrun), s)])
+    ref_match = _sort_human([s for s in dir_items if re.search('run{}_FMR.fmr'.format(refrun), s)])
 
     # get rumber of runs in dir
     n_runs = len(dir_match)
@@ -268,11 +340,11 @@ def plot_preproc_difs(input_dir, plot_sbref=True,
     # function creates fmr file for sellected runectory for preprocessed files
     re_pattern = _regex_preproc_filenames(sbref=2, slicor=slicor, motcor=motcor, hpfil=hpfil, tpsmo=tpsmo)
     dir_items = os.listdir(input_dir)
-    dir_match = sorted([s for s in dir_items if re.search(re_pattern, s)])  
+    dir_match = _sort_human([s for s in dir_items if re.search(re_pattern, s)])  
 
     # search trough directory for unproccessed files
     re_pattern = _regex_preproc_filenames(sbref=2, slicor=False, motcor=False, hpfil=False, tpsmo=False)
-    raw_match = sorted([s for s in dir_items if re.search(re_pattern, s)])
+    raw_match = _sort_human([s for s in dir_items if re.search(re_pattern, s)])
 
     # get rumber of runs in dir
     n_runs = len(dir_match)
@@ -385,11 +457,11 @@ def plot_topup(input_dir, plot_sbref=True,
     # function creates fmr file for sellected runectory for preprocessed files
     re_pattern = _regex_preproc_filenames(sbref=2, slicor=slicor, motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, topup=False)
     dir_items = os.listdir(input_dir)
-    dir_match = sorted([s for s in dir_items if re.search(re_pattern, s)])  
+    dir_match = _sort_human([s for s in dir_items if re.search(re_pattern, s)])  
 
     # search trough directory for unproccessed files
     re_pattern = _regex_preproc_filenames(sbref=2, slicor=slicor, motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, topup=True)
-    topup_match = sorted([s for s in dir_items if re.search(re_pattern, s)])
+    topup_match = _sort_human([s for s in dir_items if re.search(re_pattern, s)])
 
     # get rumber of runs in dir
     n_runs = len(dir_match)
@@ -513,11 +585,11 @@ def plot_topup_ani(input_dir, plot_sbref=True,
     # function creates fmr file for sellected runectory for preprocessed files
     re_pattern = _regex_preproc_filenames(sbref=2, slicor=slicor, motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, topup=False)
     dir_items = os.listdir(input_dir)
-    dir_match = sorted([s for s in dir_items if re.search(re_pattern, s)])  
+    dir_match = _sort_human([s for s in dir_items if re.search(re_pattern, s)])  
 
     # search trough directory for unproccessed files
     re_pattern = _regex_preproc_filenames(sbref=2, slicor=slicor, motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, topup=True)
-    topup_match = sorted([s for s in dir_items if re.search(re_pattern, s)])
+    topup_match = _sort_human([s for s in dir_items if re.search(re_pattern, s)])
 
     # get rumber of runs in dir
     n_runs = len(dir_match)
@@ -602,6 +674,13 @@ def plot_topup_ani(input_dir, plot_sbref=True,
     
 
 # HELPER FUNCTIONS
+
+def _sort_human(l):
+    """sort files in a more human like manner"""
+    convert = lambda text: float(text) if text.isdigit() else text
+    alphanum = lambda key: [convert(c) for c in re.split('([-+]?[0-9]*\.?[0-9]*)', key)]
+    l.sort(key=alphanum)
+    return l
 
 def _norm_array(a_array, maxval=1):
     """helper function to normalize arrawy"""
