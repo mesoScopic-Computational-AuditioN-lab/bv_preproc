@@ -210,7 +210,7 @@ def anatomical_dir_information(input_dir, anatomical_marker='3D', save_vol_namin
     anatomical_dict.update(tempdict)
     return(anatomical_dict)
 
-def extract_dir_information(input_dir, save_format='csv', save_naming='dicom_namings', save_html=True, bv=None):
+def extract_dir_information(input_dir, save_format='csv', save_naming='dicom_namings', functional_marker='MOSAIC', pa_marker=r'(?i)_PA', save_html=True, bv=None):
     """scan files within sellected directory and abstract usefull information to a dataframe
     dataframe contains rows of usefull files, and columns of important header and file information
     usefull to get a quick overview of all dicom files within directory
@@ -240,7 +240,7 @@ def extract_dir_information(input_dir, save_format='csv', save_naming='dicom_nam
             'StudyTime' : []}
 
     # parse directory for function and anatomical
-    func_dict = functional_dir_information(input_dir, bv=bv)
+    func_dict = functional_dir_information(input_dir, functional_marker=functional_marker, pa_marker=pa_marker, bv=bv)
     anat_dict = anatomical_dir_information(input_dir, bv=bv)
 
     # loop over anatomical data
