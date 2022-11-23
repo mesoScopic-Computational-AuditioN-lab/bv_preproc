@@ -13,6 +13,11 @@ import shutil
 from pydicom import dcmread
 from os.path import join
 
+# path seperaters
+import posixpath
+import ntpath
+
+# loading nifti and bv files
 import bvbabel
 import nibabel
 
@@ -39,6 +44,7 @@ def topup_prepair_all(input_dir, output_dir, pps, sess,
                   prep_appa = True,     # prepair appa files
                   dimension_appa = 't', # appa dimension parameter for merge
                   cmdprefix='',         # cmd extra prefix (e.g. for wsl add 'wsl -e ')
+                  cmdpath='',         # cmd path (default same as output dir) - usefull for wsl use ('/mnt/c/etc')
                   pa_marker=r'(?i)_PA', # regex marker for pa files (what to look for in dicom discription
                   print_cmd=False,      # instead of running cmd, print comment for copy paste
                   bv=None): 
@@ -51,19 +57,22 @@ def topup_prepair_all(input_dir, output_dir, pps, sess,
     for pp, ses in itertools.product(pps, sess):
         topup_prepair(input_dir, output_dir, pp, ses,
                       pa_run=pa_run, nr_vols=nr_vols, skip_volumes_end=skip_volumes_end, sbref=sbref, slicor=slicor, 
-                      motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, motcor_appa=motcor_appa, motcor_ses=motcor_ses, 
-                      dimension_appa=dimension_appa, cmdprefix=cmdprefix, pa_marker=pa_marker, print_cmd=print_cmd, bv=bv)
+                      motcor=motcor, hpfil=hpfil, tpsmo=tpsmo, motcor_appa=motcor_appa, motcor_ses=motcor_ses, prep_appa=prep_appa,
+                      dimension_appa=dimension_appa, cmdprefix=cmdprefix, cmdpath=cmdpath, pa_marker=pa_marker, print_cmd=print_cmd, bv=bv)
     return
 
 def topup_run_all(input_dir, pps, sess,
                   conf_fil_dir='preloaded', b0name='b0.cnf', acqname='acqparams.txt',
                   outname='topup_results', motcor_appa=True,   # include motion correction for appa file)
-                  cmdprefix='', print_cmd=False, bv=None):
-    """run fsl topup using a merged ap/pa file and config files (b0/acq) loop over all participants and sessions"""
+                  cmdprefix='', cmdpath='', print_cmd=False, bv=None):
+    """run fsl topup using a merged ap/pa file and config files (b0/acq) loop over all participants and sessions
+    optional parameters cmdprefix and cmdpath are given to facilitate windows use (set cmdprefix='wsl -e ' and cmdpath='/mnt/c/etc')
+    if using wsl, one should also specify the conf_fil_dir by hand in '/mnt/driveletter/style' """
     for pp, ses in itertools.product(pps, sess):
         outfile = _regex_topup_outfile(join(input_dir, prefix(pp, ses)), motcor=motcor_appa)
         topup_run(join(input_dir, prefix(pp,ses)), outfile, conf_fil_dir=conf_fil_dir,
-                  b0name=b0name, acqname=acqname, outname=outname, cmdprefix=cmdprefix, print_cmd=print_cmd, bv=bv)
+                  b0name=b0name, acqname=acqname, outname=outname, cmdprefix=cmdprefix, 
+                  cmdpath=cmdpath, print_cmd=print_cmd, bv=bv)
     return    
 
 def topup_apply_all(input_dir, pps, sess, resname='topup_results', conf_fil_dir='preloaded', 
@@ -74,13 +83,15 @@ def topup_apply_all(input_dir, pps, sess, resname='topup_results', conf_fil_dir=
                     motcor = True,  # include motion correction naming conv
                     hpfil = True,   # include highpass filter naming conv
                     tpsmo = True,   # include temporal smoothing naming conv
-                    cmdprefix='', print_cmd=False, bv=None):  
-    """loop over directories (pps and sess) and apply topup to nii files given parameters and naming conv. of files"""
+                    cmdprefix='', cmdpath='', print_cmd=False, bv=None):  
+    """loop over directories (pps and sess) and apply topup to nii files given parameters and naming conv. of files
+    optional parameters cmdprefix and cmdpath are given to facilitate windows use (set cmdprefix='wsl -e ' and cmdpath='/mnt/c/etc')
+    if using wsl, one should also specify the conf_fil_dir by hand in '/mnt/driveletter/style' """
     for pp, ses in itertools.product(pps, sess):
         topup_apply_runs(join(input_dir, prefix(pp,ses)), resname=resname, conf_fil_dir=conf_fil_dir,
                          acqname=acqname, out_suffix=out_suffix, inindex=inindex, method=method, interp=interp,
                          sbref=sbref, slicor=slicor, motcor=motcor, hpfil=hpfil, 
-                         tpsmo=tpsmo, cmdprefix=cmdprefix, print_cmd=print_cmd, bv=bv)
+                         tpsmo=tpsmo, cmdprefix=cmdprefix, cmdpath=cmdpath, print_cmd=print_cmd, bv=bv)
     return
     
 def topup_tobv_all(input_dir, pps, sess, suffix='', sbref=True, # include sbref to list of to converts
@@ -113,6 +124,7 @@ def topup_prepair(input_dir, output_dir, pp, ses,
                   prep_appa = True,     # prepair appa files
                   dimension_appa = 't', # appa dimension parameter for merge
                   cmdprefix='',         # cmd extra prefix (e.g. for wsl add 'wsl -e ')
+                  cmdpath='',         # cmd path (default same as output dir) - usefull for wsl use ('/mnt/c/etc')
                   pa_marker=r'(?i)_PA', # regex marker for pa files (what to look for in dicom discription
                   print_cmd=False,      # instead of running cmd, print comment for copy paste
                   bv=None): 
@@ -143,7 +155,8 @@ def topup_prepair(input_dir, output_dir, pp, ses,
         topup_convert_to_nifti_appa(join(output_dir, prefix(pp,ses)), motcor=motcor_appa, bv=bv)
         # merge pa/ap together
         _, outfile = topup_merge_appa(join(output_dir, prefix(pp,ses)), motcor=motcor_appa, 
-                                      dimension=dimension_appa, cmdprefix=cmdprefix, print_cmd=print_cmd, bv=bv)
+                                      dimension=dimension_appa, cmdprefix=cmdprefix, 
+                                      cmdpath=cmdpath, print_cmd=print_cmd, bv=bv)
 
     # convert bv files to nifti
     topup_convert_to_nifti_runs(join(output_dir, prefix(pp,ses)), sbref=sbref, slicor=slicor, 
@@ -151,9 +164,11 @@ def topup_prepair(input_dir, output_dir, pp, ses,
     return
 
 
-def topup_merge_appa(input_dir, motcor=True, dimension='t', output_type='NIFTI_GZ', cmdprefix='', print_cmd=False, bv=None):
+def topup_merge_appa(input_dir, motcor=True, dimension='t', output_type='NIFTI_GZ', cmdprefix='', cmdpath='', print_cmd=False, bv=None):
     """convert ap and pa nifti files into one, sellect files based on regex,
-    if motcor is true, find that instead"""
+    if motcor is true, find that instead. for windows users there are the options cmdprefix and cmdpath
+    to make topup work in wsl, (e.g. set cmdprefix='wsl -e ' and set cmdpath='/mnt/c/pathwithforwardslashes')
+    """
 
     # set regex for motcorrection when true or false
     if motcor: r_motcor = '='
@@ -168,11 +183,16 @@ def topup_merge_appa(input_dir, motcor=True, dimension='t', output_type='NIFTI_G
     pa_fil = [s for s in dir_items if re.search(pa_pattern, s)][0]
 
     print(f'ap_file: {ap_fil}, pa_fil: {pa_fil}')
+
+    # check if specific cmdpath was given else use input_dir
+    if not cmdpath: cmdpath = input_dir
     
+    print(f'\n\ncmd:{cmdpath}\ninput:{input_dir}\nap:{ap_fil}')
+
     # create cmd command
-    mergecmd = _topup_merge_cmd(join(input_dir, ap_fil), 
-                                join(input_dir, pa_fil), 
-                                join(input_dir, re.sub('AP', 'APPA', ap_fil)), 
+    mergecmd = _topup_merge_cmd(join(cmdpath, ap_fil).replace(ntpath.sep, posixpath.sep), 
+                                join(cmdpath, pa_fil).replace(ntpath.sep, posixpath.sep), 
+                                join(cmdpath, re.sub('AP', 'APPA', ap_fil)).replace(ntpath.sep, posixpath.sep), 
                                 dimension=dimension, output_type=output_type, cmdprefix=cmdprefix)
     print_f("\nRunning shell: '{}'".format(mergecmd), bv=bv)
     if print_cmd: print(mergecmd) 
@@ -182,15 +202,20 @@ def topup_merge_appa(input_dir, motcor=True, dimension='t', output_type='NIFTI_G
 
 def topup_run(input_dir, filname, conf_fil_dir='preloaded', b0name='b0.cnf', 
               acqname = 'acqparams.txt', outname='topup_results', 
-              cmdprefix='', print_cmd=False, bv=None):
-    """run fsl topup using a merged ap/pa file and config files (b0/acq)"""  
+              cmdprefix='', cmdpath='', print_cmd=False, bv=None):
+    """run fsl topup using a merged ap/pa file and config files (b0/acq)
+    for windows users there are the options cmdprefix and cmdpath
+    to make topup work in wsl, (e.g. set cmdprefix='wsl -e ' and set cmdpath='/mnt/c/pathwithforwardslashes')
+    for the windows usecase one should also specify conf_fil_dir by hand (which is within the bv_preproc folder)"""  
     # use the preloaded configuration files if conf_fil_dir = 'preloaded'
     if conf_fil_dir == 'preloaded' : conf_fil_dir = join(dir_path, 'configs')
+    # check if specific cmdpath was given else use input_dir
+    if not cmdpath: cmdpath = input_dir
     # create cmd command for running topup
-    topupcmd = _topup_run_cmd(join(input_dir, filname), 
-                              join(conf_fil_dir, acqname), 
-                              join(conf_fil_dir, b0name), 
-                              join(input_dir, outname), cmdprefix=cmdprefix)
+    topupcmd = _topup_run_cmd(join(cmdpath, filname).replace(ntpath.sep, posixpath.sep), 
+                              join(conf_fil_dir, acqname).replace(ntpath.sep, posixpath.sep), 
+                              join(conf_fil_dir, b0name).replace(ntpath.sep, posixpath.sep), 
+                              join(cmdpath, outname).replace(ntpath.sep, posixpath.sep), cmdprefix=cmdprefix)
     print_f("\nRunning shell: '{}'\n -fsl topup can take long to process... please be patient".format(topupcmd), bv=bv)
     if print_cmd: print(topupcmd)
     else: os.system(topupcmd)
@@ -205,7 +230,7 @@ def topup_apply_runs(input_dir, resname='topup_results', conf_fil_dir='preloaded
                             motcor = True,  # include motion correction naming conv
                             hpfil = True,   # include highpass filter naming conv
                             tpsmo = True,   # include temporal smoothing naming conv
-                            cmdprefix='', print_cmd=False, bv=None):  
+                            cmdprefix='', cmdpath='', print_cmd=False, bv=None):  
     """loop over directory and apply topup to nii files given parameters and naming conv. of files"""
     # get filenames for given parameters & convert to full path
     filenames = preproc_filenames(input_dir, sbref=2, slicor=slicor, motcor=motcor, 
@@ -219,15 +244,18 @@ def topup_apply_runs(input_dir, resname='topup_results', conf_fil_dir='preloaded
     for fl in filenames:
         topup_apply(fl, resname, input_dir, conf_fil_dir=conf_fil_dir, acqname=acqname, 
                     out_suffix=out_suffix, inindex=1, method=method, interp=interp,
-                    cmdprefix=cmdprefix, print_cmd=print_cmd, bv=bv)
+                    cmdprefix=cmdprefix, cmdpath=cmdpath, print_cmd=print_cmd, bv=bv)
     return  
 
 
 def topup_apply(filname, resname, input_dir, conf_fil_dir='preloaded', acqname='acqparams.txt', 
                 out_suffix='_TOPUP', inindex=1, method='jac', interp='spline',
-                cmdprefix='', print_cmd=False, bv=None): 
+                cmdprefix='', cmdpath='', print_cmd=False, bv=None): 
     """input filname, topup results name, directory, configuration directory, and optional name op acq doc & suffix
-    to keep using the same name set out_suffix to False, lastly one could change topup apply options from defaults"""
+    to keep using the same name set out_suffix to False, lastly one could change topup apply options from defaults 
+    by changing optional parameters. for windows users there are the options cmdprefix and cmdpath
+    to make topup work in wsl, (e.g. set cmdprefix='wsl -e ' and set cmdpath='/mnt/c/pathwithforwardslashes')
+    for the windows usecase one should also specify conf_fil_dir by hand (which is within the bv_preproc folder)"""
 
     # use the preloaded configuration files if conf_fil_dir = 'preloaded'
     if conf_fil_dir == 'preloaded' : conf_fil_dir = join(dir_path, 'configs')
@@ -235,12 +263,15 @@ def topup_apply(filname, resname, input_dir, conf_fil_dir='preloaded', acqname='
     # add suffix to path name (if outsuffix is not False)
     if out_suffix: outputname = _add_suffix(filname, out_suffix)
     else: outputname = filname
-    
+
+    # check if specific cmdpath was given else use input_dir
+    if not cmdpath: cmdpath = input_dir
+
     # create cmd command for applying topup
-    applycmd = _topup_apply_cmd(join(input_dir, filname), 
-                                join(conf_fil_dir, acqname), 
-                                join(input_dir, resname), 
-                                join(input_dir, outputname), 
+    applycmd = _topup_apply_cmd(join(cmdpath, filname).replace(ntpath.sep, posixpath.sep), 
+                                join(conf_fil_dir, acqname).replace(ntpath.sep, posixpath.sep), 
+                                join(cmdpath, resname).replace(ntpath.sep, posixpath.sep), 
+                                join(cmdpath, outputname).replace(ntpath.sep, posixpath.sep), 
                                 inindex=inindex, method=method, interp=interp, cmdprefix=cmdprefix)
     print_f("\nRunning shell: {}".format(applycmd), bv=bv)
     if print_cmd: print(applycmd)
