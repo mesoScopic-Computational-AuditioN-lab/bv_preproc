@@ -182,12 +182,8 @@ def topup_merge_appa(input_dir, motcor=True, dimension='t', output_type='NIFTI_G
     ap_fil = [s for s in dir_items if re.search(ap_pattern, s)][0]
     pa_fil = [s for s in dir_items if re.search(pa_pattern, s)][0]
 
-    print(f'ap_file: {ap_fil}, pa_fil: {pa_fil}')
-
     # check if specific cmdpath was given else use input_dir
     if not cmdpath: cmdpath = input_dir
-    
-    print(f'\n\ncmd:{cmdpath}\ninput:{input_dir}\nap:{ap_fil}')
 
     # create cmd command
     mergecmd = _topup_merge_cmd(join(cmdpath, ap_fil).replace(ntpath.sep, posixpath.sep), 
