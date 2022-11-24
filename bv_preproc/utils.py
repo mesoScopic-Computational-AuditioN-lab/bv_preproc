@@ -163,6 +163,13 @@ def _regex_preproc_filenames(sbref = 1, # 1: includes sbref (if pres, with param
     elif sbref == 3: re_pattern = r'_(?=.*SBRef)[a-zA-Z0-9_]+FMR{}[a-zA-Z0-9_.]+{}$'.format(lookbehind, dtype)
     return(re_pattern)
 
+def _sort_human(l):
+    """sort files in a more human like manner"""
+    convert = lambda text: float(text) if text.isdigit() else text
+    alphanum = lambda key: [convert(c) for c in re.split('([-+]?[0-9]*\.?[0-9]*)', key)]
+    l.sort(key=alphanum)
+    return l
+
 def _get_pp_keys():
     """helper function not to be called from outside,
     load keys for preproccessing steps"""
