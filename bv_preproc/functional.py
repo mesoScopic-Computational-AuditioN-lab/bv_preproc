@@ -113,11 +113,12 @@ def create_fmr_sbreff(bv, func_dict, data_folder, target_folder, currun=1):
 def preprocess_fmrs(bv, output_dir, pps, sess, process_sbreff=True, b_sli=True, b_mot=True, b_hghp=True, b_temps=False,
                 slictim_int_meth = 2,    # 0:linear, 1:cubic spline, 2: sinc
                 motcor_full = True,      # motion correction uses full dataset or only subset of voxels for motion detection
-                motcor_run = 1,          # what run to use as refference
+                motcor_run = 1,          # what run to use as refference - if False do within run MC
                 motcor_intp_meth = 2,    # 1:trilinear, 2: trilinear(motion det) sinc(final volume transform, 3: sinc,
                 motcor_ses = False,      # refference session, default false: same as ses
                 motcor_fromsdm = None,   # lambda function for obtaining sdm list - lambda pp, ses (default, motion correction from scratch)
                 motcor_interses = 'interses_smooth_3DMC.sdm',  # -needed if fromsdm was given, fn within folder of interest (ignored otherwise)
+                motcor_intersesrun = None,   # use a specified run to obtain interrun correction xyz - if None use current run (None: apply run to run, 1: apply session to session)
                 motcor_fromsdm_sbref = None, # lambda function for obtaining sdm list for sbref - lambda pp, ses (default ignored)
                 highp_cycles = 7,        # number of dycles that will be removed from voxel time course   
                 temps_fwhm = 2,          # float fwhm of gaussian smoothing kernel  
@@ -148,12 +149,18 @@ def preprocess_fmrs(bv, output_dir, pps, sess, process_sbreff=True, b_sli=True, 
         # start loop over runs
         for i in range(len(fmrlist)):
             fmr = fmrlist[i]
+
+            # find current run
+            if not motcor_intersesrun:
+                motcor_intersesrun = _find_run(fmr) 
+            motcor_interses_run = 'run{}_{}'.format(motcor_intersesrun, motcor_interses)
+
             doc_fmr = bv.open_document(join(output_dir, prefix(pp, ses), fmr))
             doc_fmr = preproc_run(bv, doc_fmr, output_dir, pp, ses, b_sli=b_sli, b_mot=b_mot, 
                                   b_hghp=b_hghp, b_temps=b_temps, slictim_int_meth=slictim_int_meth,
                                   motcor_full=motcor_full, motcor_run=motcor_run, 
                                   motcor_intp_meth=motcor_intp_meth, motcor_ses=motcor_ses,
-                                  motcor_fromsdm=sdmlist[i], motcor_interses=motcor_interses,
+                                  motcor_fromsdm=sdmlist[i], motcor_interses=motcor_interses_run,
                                   highp_cycles=highp_cycles, temps_fwhm=temps_fwhm, temps_fwhm_s=temps_fwhm_s)
         # processes sbref if desired
         if process_sbreff:
@@ -168,16 +175,66 @@ def preprocess_fmrs(bv, output_dir, pps, sess, process_sbreff=True, b_sli=True, 
             # [optional] if we give in sdm lambda, motion parameters will be obtained from this instead of motion correction
             if motcor_fromsdm_sbref: sbreffsdmlist = motcor_fromsdm_sbref(pp, ses)
             else: sbreffsdmlist = [None] * len(sbrefflist)
+            # find current run of the SBREF
+            motcor_intersesrun = _find_run(sbrefflist[0]) 
+            motcor_interses_run = 'run{}_{}'.format(motcor_intersesrun, motcor_interses)
+            # link motcor run directly to the same run number when motcor_run is within run
+            if not motcor_run:
+                motcor_run_sbref = motcor_intersesrun
+            else:
+                motcor_run_sbref = motcor_run
             # start actual motion correction
             doc_fmr = bv.open_document(join(output_dir, prefix(pp, ses), sbrefflist[0]))
-            doc_fmr = preproc_run_sbref(bv, doc_fmr, output_dir, pp, ses, motcor_ses=motcor_ses, 
-                                        motcor_fromsdm=sbreffsdmlist[0], motcor_interses=motcor_interses)
+            doc_fmr = preproc_run_sbref(bv, doc_fmr, output_dir, pp, ses, motcor_run=motcor_run_sbref, motcor_ses=motcor_ses, 
+                                        motcor_fromsdm=sbreffsdmlist[0], motcor_interses=motcor_interses_run)
+
+
+            # MOTCOR_RUN IS THIS WAY ALWAYS LINKED TO THE RUN IT IS BELONGING TO, MAKE THIS MORE FLEXIBLE
+
+
     return
 
+#def preprocess_sbrefs(bv, output_dir, pps, sess,
+#                motcor_full = True,      # motion correction uses full dataset or only subset of voxels for motion detection
+#                motcor_run = 1,          # what run to use as refference - if False do within run MC
+#                motcor_intp_meth = 2,    # 1:trilinear, 2: trilinear(motion det) sinc(final volume transform, 3: sinc,
+#                motcor_ses = False,      # refference session, default false: same as ses
+#                motcor_fromsdm = None,   # lambda function for obtaining sdm list - lambda pp, ses (default, motion correction from scratch)
+#                motcor_interses = 'interses_smooth_3DMC.sdm',  # -needed if fromsdm was given, fn within folder of interest (ignored otherwise)
+#                motcor_fromsdm_sbref = None, # lambda function for obtaining sdm list for sbref - lambda pp, ses (default ignored)
+#                fnlist = None,           # lambda function for obtaining fnlist - lambda pp, ses (default automatically loaded)
+#                fnsbref = None):         # lambda function for obtaining sbreflist - lambda pp, ses (default automatically loaded)
+#    """Do precocessing for all sbref files standard options / default options are set within function
+#    input doc_fmr and boleans whether to run preprocessing step
+#      b_mot: run motion correction
+#    by default all true except for temporal smoothing
+#    note that function only does brainvoyager function (topup has its own function)"""
+#    # loop over pp and ses for complete proc pipeline
+#    for pp, ses in itertools.product(pps, sess): 
+#        # check if we have a predefined sbref list
+#        if fnsbref: 
+#            sbrefflist = fnsbref(pp, ses)
+#        else:
+#            # load a list of to process files
+#            sbrefflist = preproc_filenames(join(output_dir, prefix(pp, ses)),
+#                                sbref = 3, slicor = False, motcor = False,  
+#                                 hpfil = False, tpsmo = False, topup = False, dtype = 'fmr')
+#        # [optional] if we give in sdm lambda, motion parameters will be obtained from this instead of motion correction
+#        if motcor_fromsdm_sbref: sbreffsdmlist = motcor_fromsdm_sbref(pp, ses)
+#        else: sbreffsdmlist = [None] * len(sbrefflist)
+#        # find current run of the SBREF
+#        currun = _find_run(sbrefflist[0]) 
+#        motcor_interses_run = 'run{}_{}'.format(currun, motcor_interses)
+#        # start actual motion correction
+#        doc_fmr = bv.open_document(join(output_dir, prefix(pp, ses), sbrefflist[0]))
+#        doc_fmr = preproc_run_sbref(bv, doc_fmr, output_dir, pp, ses, motcor_ses=motcor_ses, 
+#                                    motcor_fromsdm=sbreffsdmlist[0], motcor_interses=motcor_interses_run)
+#    return
+#
 def preproc_run(bv, doc_fmr, output_dir, pp, ses, b_sli=True, b_mot=True, b_hghp=True, b_temps=False,
                 slictim_int_meth = 2,    # 0:linear, 1:cubic spline, 2: sinc
                 motcor_full = True,      # motion correction uses full dataset or only subset of voxels for motion detection
-                motcor_run = 1,          # what run to use as refference
+                motcor_run = 1,          # what run to use as refference - if False do within run MC
                 motcor_intp_meth = 2,    # 1:trilinear, 2: trilinear(motion det) sinc(final volume transform, 3: sinc,
                 motcor_ses = False,      # refference session, default false: same as ses
                 motcor_fromsdm = None,   # instead apply motion correction from existing sdm file (fn within folder)
@@ -192,8 +249,7 @@ def preproc_run(bv, doc_fmr, output_dir, pp, ses, b_sli=True, b_mot=True, b_hghp
       b_hghp: run highpass filter
       b_temps: run temporal smoothing
     by default all true except for temporal smoothing
-    note that function only does brainvoyager functions (topup has its own function)"""
-    
+    note that function only does brainvoyager functions (topup has its own function)""" 
     # do actual preprocessing
     if b_sli:   
         doc_fmr.correct_slicetiming_using_timingtable(2)           # do slicetime correction relying on sinc interpolation for interpolation 
@@ -213,10 +269,17 @@ def preproc_run(bv, doc_fmr, output_dir, pp, ses, b_sli=True, b_mot=True, b_hghp
                                         motcor_intp_meth, tx, ty, tz, rx, ry, rz)                # apply from existing file
             doc_fmr = bv.open(doc_fmr.preprocessed_fmr_name, True)
         else:
+            # if motcor session is not filled in assume within session
             if not motcor_ses: motcor_ses = ses
-                                                                   # do motion correction to first volume of first run:   
-            doc_fmr.correct_motion_to_run_ext(_path_fmr(output_dir, pp, motcor_ses, motcor_run),  # (targetfmr, targetvol, interp(trilinsinc),
-                                            0, motcor_intp_meth, motcor_full, 150, False, True)   # full_data, maxitter, movie, extendedlog)   
+
+            # depending if specified, do motion correction to external run or within run
+            if not motcor_run: 
+                # do motion correction within run:   
+                doc_fmr.correct_motion_ext(0, motcor_intp_meth, motcor_full, 200, False, True)   # tarvol, interp(trisi), full_dt, maxit, movie, extlog)                
+            else:
+                # do motion correction to first volume of first run:   
+                doc_fmr.correct_motion_to_run_ext(_path_fmr(output_dir, pp, motcor_ses, motcor_run),  # (targetfmr, targetvol, interp(trilinsinc),
+                                                0, motcor_intp_meth, motcor_full, 200, False, True)   # full_data, maxitter, movie, extendedlog)   
             doc_fmr = bv.open(doc_fmr.preprocessed_fmr_name, True)
     if b_hghp:  
         doc_fmr.filter_temporal_highpass_glm_fourier(highp_cycles) # highpas filter results
@@ -226,15 +289,15 @@ def preproc_run(bv, doc_fmr, output_dir, pp, ses, b_sli=True, b_mot=True, b_hghp
         doc_fmr = bv.open(doc_fmr.preprocessed_fmr_name, True)
     return(doc_fmr)
     
-def preproc_run_sbref(bv, doc_fmr, output_dir, pp, ses, motcor_ses=False, motcor_fromsdm=None, motcor_interses=None):
+def preproc_run_sbref(bv, doc_fmr, output_dir, pp, ses, motcor_run=1, motcor_ses=False, motcor_fromsdm=None, motcor_interses=None):
     """do preproc step (only motion correction) also for sbref, uses paramaters set in preproc_run
     note that function only does brainvoyager functions (topup has its own function)"""
     # do preprocessing
-    doc_fmr = preproc_run(bv, doc_fmr, output_dir, pp, ses, b_sli=False, b_mot=True, b_hghp=False, b_temps=False, 
+    doc_fmr = preproc_run(bv, doc_fmr, output_dir, pp, ses, b_sli=False, b_mot=True, b_hghp=False, b_temps=False, motcor_run=motcor_run,
                           motcor_ses=motcor_ses, motcor_fromsdm=motcor_fromsdm, motcor_interses=motcor_interses)
     return(doc_fmr)
 
-def interses_files_create(bv, output_dir, pps, sess, currun=1, out_fn='interses_smooth.fmr', meanovervols=False, 
+def interses_files_create(bv, output_dir, pps, sess, runz=[1], out_fn='interses_smooth.fmr', meanovervols=False, 
                           b_sli=True, b_mot=True, b_hghp=False, b_temps=False, b_topup=False):
     """function to create intersession files, both smoothed (mean) volumes
     input output directory [output_dir], pp list [pps], ses list [sess], what run to smooth (default first) [currun], 
@@ -248,30 +311,45 @@ def interses_files_create(bv, output_dir, pps, sess, currun=1, out_fn='interses_
                              sbref = 2, slicor = b_sli, motcor = b_mot,
                              hpfil = b_hghp, tpsmo = b_temps, topup = b_topup, dtype = 'fmr'))
 
-        # update user
-        print_f('\nGenerating average volume of: {}\n -directory: {}\n -output filename: {}\n -mean over nr of volumes: {}'.format(fmr_fn[currun-1], 
-                                                                                                                      join(output_dir, prefix(pp, ses)),
-                                                                                                                      out_fn, meanovervols), bv=bv)
-        # create mean value from parameters + what run we want
-        _create_mean_fmr(join(output_dir, prefix(pp, ses), fmr_fn[currun-1]), 
-                         join(output_dir, prefix(pp, ses), out_fn),
-                         meanovervols=meanovervols)
+        # loop over runs 
+        for currun in runz:
+
+            # append run to output filename
+            out_fn_run = 'run{}_{}'.format(currun, out_fn)
+
+            # update user
+            print_f('\nGenerating average volume of: {}\n -directory: {}\n -output filename: {}\n -mean over nr of volumes: {}'.format(fmr_fn[currun-1], 
+                                                                                                                          join(output_dir, prefix(pp, ses)),
+                                                                                                                          out_fn_run, meanovervols), bv=bv)
+
+            # create mean value from parameters + what run we want
+            _create_mean_fmr(join(output_dir, prefix(pp, ses), fmr_fn[currun-1]), 
+                             join(output_dir, prefix(pp, ses), out_fn_run),
+                             meanovervols=meanovervols)
     return
 
-def interses_files_allign(bv, output_dir, pps, fromses, toses, fromallign_fn='interses_smooth.fmr', toallign_fn='interses_smooth.fmr'):
+def interses_files_allign(bv, output_dir, pps, fromses, toses, runz=[1], fromallign_fn='interses_smooth.fmr', toallign_fn='interses_smooth.fmr', toallign_run=1):
     """function to allign files between sessions, input: output directory [output_dir], pp list to parse [pps], 
     what session to allign [fromses], to session to allign [toses], allignment filenames [fromallign_fn & toallign_fn],
     by default both files have the same name (encoded by the directory)"""
     # loop over participants
     for pp in pps:
-        # update user
-        print_f('\nAllign {} (session:{}) to {} (session:{})'.format(fromallign_fn, prefix(pp,fromses), 
-                                                                     toallign_fn, prefix(pp,toses)), bv=bv)
 
-        # open document
-        doc_fmr = bv.open_document(join(output_dir, prefix(pp, fromses), fromallign_fn))
-        doc_fmr.correct_motion_to_run_ext(join(output_dir, prefix(pp, toses), toallign_fn),        # (targetfmr, targetvol, interp(trilinsinc),
-                                          0, 3, True, 150, False, True)                           #  full_data, maxitter, movie, extendedlog)  
+        # loop over runs 
+        for currun in runz:
+
+            # get filename for current run
+            fromallign_fn_run = 'run{}_{}'.format(currun, fromallign_fn)
+            toallign_fn_run = 'run{}_{}'.format(toallign_run, toallign_fn)
+
+            # update user
+            print_f('\nAllign {} (session:{}) to {} (session:{})'.format(fromallign_fn_run, prefix(pp,fromses), 
+                                                                         toallign_fn_run, prefix(pp,toses)), bv=bv)
+
+            # open document
+            doc_fmr = bv.open_document(join(output_dir, prefix(pp, fromses), fromallign_fn_run))
+            doc_fmr.correct_motion_to_run_ext(join(output_dir, prefix(pp, toses), toallign_fn_run),   # (targetfmr, targetvol, interp(trilinsinc),
+                                              0, 3, True, 200, False, True)                           #  full_data, maxitter, movie, extendedlog)  
     return
 
 ## HELPER FUNCTIONS FOR PARSING SDMS AND CREATING MEAN VOLUMES
@@ -281,8 +359,8 @@ def _parse_interses_sdm(sdm_fn):
     # open sdm file and read xyz information for translations and rotations
     with open(sdm_fn) as f:
         trxyz = f.readlines()[-1]
-    # transform to list of floats
-    trxyz = [float(x) for x in re.findall(r'[\d.-]+', trxyz)]
+    # transform to list of floats - robust for fusednumbers and scientific notation
+    trxyz = np.array(re.findall(r'-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?', trxyz), dtype=float)
     return(trxyz)
 
 def _create_mean_fmr(fmr_fn, out_fn,meanovervols=False):
@@ -340,3 +418,7 @@ def _path_fmr(output_dir, pp, ses, currun):
     dir_items = os.listdir(dir_loc)                                                                            # check documents in folder
     fmrdocs = list(filter(lambda v: re.search(r'run{}_FMR.fmr$'.format(currun), v), dir_items))    # regex search for wanted
     return('{}/{}'.format(dir_loc, fmrdocs[0]))
+
+def _find_run(fn):
+    return(re.search(r'run(\d+)', fn).group(1))
+

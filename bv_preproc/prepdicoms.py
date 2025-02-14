@@ -153,8 +153,8 @@ def anatomical_dir_information(input_dir, anatomical_marker='3D', save_vol_namin
             curhead.ImageType[-1] = None        # set to none if error
             print_f('error reading dcm in {}'.format(file), bv)
 
-        if curhead.MRAcquisitionType == anatomical_marker: 
-    
+        if curhead.MRAcquisitionType == anatomical_marker and hasattr(curhead, 'AcquisitionMatrix'): 
+
             # regex the first part (session + run) of the filename to use later in getting volumes
             findrun = re.search(r'[a-zA-Z0-9]+-[0-9]+-', file)[0]         
             anatomical_dict[file] = {}                        # nest dictonary and save as filename of interest

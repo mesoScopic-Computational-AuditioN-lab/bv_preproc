@@ -22,7 +22,7 @@ def create_vtc_bulk_all(bv, input_dir, pps, sess, vmr_fn,
                     ia_trf_fn=True,             # default true (automatic), or string of initial adjustment file
                     fa_trf_fn=True,             # default true (automatic), or string of fine adjustement file
                     first_vol_bounding_box = True, # use first volume for bounding box dimensions
-                    bounding_box_array = None,  # needed if first_vol_bounding_box is set to false, input own dimensions
+                    bounding_box_lamb = None,   # lambda for getting bounding box : pp, ses (needed if first_vol_bounding_box:false)
                     vtcspace = 1,               # create vtc in 1: native or 2: acpc space
                     acpc_trf_fn = None,         # if vtcspace is 2, give in acpc fn
                     extended_tal = False,       # use extened tal space for vtc creation (optional)
@@ -30,8 +30,8 @@ def create_vtc_bulk_all(bv, input_dir, pps, sess, vmr_fn,
                     interpolation_method = 2,   # interpolation method (0: nearest neighbor, 1: trilinear, 2: sinc)
                     bounding_box_int = 100,     # seperate background voxels from brain voxels
                     data_type = 2,              # 1: interger values, 2: float values
-                    trf_dir = False,            # seperate trf direcotry (to create vtc from e.g. other session)
-                    fmr_dir = False,           # seperate anatomical directory (to create vtc from e.g. other session)
+                    trf_lamb = None,            # lambda for specifying trf directory : pp, ses (to create vtc from e.g. other session)
+                    fmr_lamb = None,            # lambda for specifying seperate functional directory: pp, ses (to create vtc from e.g. other session)
                     fmr_slicor=True, fmr_motcor=True, fmr_hpfil=True, 
                     fmr_tpsmo=False, fmr_topup=True):   # parameters for automatically getting fmr filelist to create vtcs for
     """create vtc files in native or acpc space given settings loop over all runs
@@ -40,8 +40,19 @@ def create_vtc_bulk_all(bv, input_dir, pps, sess, vmr_fn,
     warning: be carefull using this extened looping function if you want to use costum bounding boxes"""
     # loop over pp and ses for complete proc pipeline
     for pp, ses in itertools.product(pps, sess):
-        fmr_list = preproc_filenames(join(input_dir, prefix(pp, ses)), sbref=2, slicor = fmr_slicor,
+        # see if we specify a trf and fmr labmda to sellect a specific directory
+        if trf_lamb: trf_dir = trf_lamb(pp,ses)                                 # check if lambda function and fill in pp, ses
+        else: trf_dir = False
+        if fmr_lamb: fmr_dir = fmr_lamb(pp,ses)                                 # check if lambda function and fill in pp, ses
+        else: fmr_dir = join(input_dir, prefix(pp, ses))
+        if bounding_box_lamb: bounding_box_array = bounding_box_lamb(pp,ses)    # check if lambda function and fill in pp, ses
+        else: bounding_box_array = None
+
+        # automatically obtain frm list
+        fmr_list = preproc_filenames(fmr_dir, sbref=2, slicor = fmr_slicor,
                                      motcor = fmr_motcor, hpfil = fmr_hpfil, tpsmo = fmr_tpsmo, topup = fmr_topup)
+
+        # bulk create vtcs for this pp and this session
         create_vtc_bulk(bv, join(input_dir, prefix(pp, ses)), vmr_fn, fmr_list, 
                         vtc_list=vtc_list, ia_trf_fn=ia_trf_fn, fa_trf_fn=ia_trf_fn,
                         first_vol_bounding_box = first_vol_bounding_box,
@@ -70,7 +81,7 @@ def create_vtc(bv, input_dir, vmr_fn, fmr_fn, vtc_fn, ia_trf_fn, fa_trf_fn,
                 bounding_box_int = 100,     # seperate background voxels from brain voxels
                 data_type = 2,              # 1: interger values, 2: float values
                 trf_dir = False,            # seperate trf direcotry (to create vtc from e.g. other session)
-                fmr_dir = False):          # seperate anatomical directory (to create vtc from e.g. other session)
+                fmr_dir = False):           # seperate functional directory (to create vtc from e.g. other session)
     """create vtc files in native or acpc space given settings"""
     
     # set costum directory for some files if wanted
@@ -125,7 +136,7 @@ def create_vtc_bulk(bv, input_dir, vmr_fn, fmr_list,
                     bounding_box_int = 100,     # seperate background voxels from brain voxels
                     data_type = 2,              # 1: interger values, 2: float values
                     trf_dir = False,            # seperate trf direcotry (to create vtc from e.g. other session)
-                    fmr_dir = False):          # seperate anatomical directory (to create vtc from e.g. other session)
+                    fmr_dir = False):           # seperate functional directory (to create vtc from e.g. other session)
     """create vtc files in native or acpc space given settings loop over all runs
     option to use first run for bounding box or to imput own bounding box"""
 
@@ -143,11 +154,12 @@ def create_vtc_bulk(bv, input_dir, vmr_fn, fmr_list,
     for i in range(len(fmr_list)):
     
         # print info to log
-        print_f('\nCreating vtc for vmr: {}, fmr: {} (ia: {}, fa: {})'.format(vmr_fn, fmr_list[i], ia_trf_fn, fa_trf_fn), bv=bv)
+        print_f('\nCreating vtc for vmr: {}, fmr: {} (ia: {}, fa: {})\n -input dir: {}\n -trf dir: {} \n -fmr dir: {}'.format(vmr_fn, fmr_list[i], ia_trf_fn, fa_trf_fn,
+                                                                                                                              input_dir, trf_dir, fmr_dir), bv=bv)
 
         # use correct bounding box
-        if (i == 0) and first_vol_bounding_box: 
-            
+        if (i == 0) and first_vol_bounding_box:           
+
             # initial vtc
             create_vtc(bv, input_dir, vmr_fn, fmr_list[i], vtc_list[i], ia_trf_fn, fa_trf_fn, 
                        False, vtcspace=vtcspace, 
@@ -160,7 +172,7 @@ def create_vtc_bulk(bv, input_dir, vmr_fn, fmr_list,
             bounding_box_array = np.array([[vtc_head['ZStart'], vtc_head['ZEnd']], 
                                            [vtc_head['XStart'], vtc_head['XEnd']], 
                                            [vtc_head['YStart'], vtc_head['YEnd']]])
-            print_f('\nBounding Box loaded: x1={}, x2={}, y1={}, y2={}, z1={}, z2{}'.format(vtc_head['XStart'], 
+            print_f('\nBounding Box loaded: x1={}, x2={}, y1={}, y2={}, z1={}, z2={}'.format(vtc_head['XStart'], 
                                                                                             vtc_head['XEnd'], 
                                                                                             vtc_head['YStart'], 
                                                                                             vtc_head['YEnd'], 
@@ -183,7 +195,7 @@ def bounding_box(vtc_path, bv=None):
                                    [vtc_head['XStart'], vtc_head['XEnd']], 
                                    [vtc_head['YStart'], vtc_head['YEnd']]])
     # update user
-    print_f('\nBounding Box loaded: x1={}, x2={}, y1={}, y2={}, z1={}, z2{}'.format(vtc_head['XStart'], 
+    print_f('\nBounding Box loaded: x1={}, x2={}, y1={}, y2={}, z1={}, z2={}'.format(vtc_head['XStart'], 
                                                                                     vtc_head['XEnd'], 
                                                                                     vtc_head['YStart'], 
                                                                                     vtc_head['YEnd'], 
@@ -203,6 +215,7 @@ def trf_fn(input_dir, exclude_re, trf_re):
 
     # then exclude based on exclusion criteria
     dir_match_nomask = [s for s in dir_match if exclude_re not in s]
+
     return(dir_match_nomask)
   
 

@@ -19,7 +19,7 @@ import bvbabel
 
 from bv_preproc.utils import (print_f, prefix,
                               target_dir, preproc_filenames,
-                              _regex_preproc_filenames)
+                              _regex_preproc_filenames, _sort_human)
 import bv_preproc.bvbabel_light as bvbabel_light
 
 
@@ -674,14 +674,6 @@ def plot_topup_ani(input_dir, plot_sbref=True,
     
 
 # HELPER FUNCTIONS
-
-def _sort_human(l):
-    """sort files in a more human like manner"""
-    convert = lambda text: float(text) if text.isdigit() else text
-    alphanum = lambda key: [convert(c) for c in re.split('([-+]?[0-9]*\.?[0-9]*)', key)]
-    l.sort(key=alphanum)
-    return l
-
 def _norm_array(a_array, maxval=1):
     """helper function to normalize arrawy"""
     return((a_array/np.max(a_array))*maxval)
